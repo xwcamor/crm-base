@@ -1,0 +1,116 @@
+<?php
+
+return [
+    'singular'      => 'Almacén',
+    'plural'        => 'Almacenes',
+    'record'        => 'almacén',
+    'records'       => 'almacenes',
+    'new'           => 'Crear almacén',
+    'id'            => 'N°',
+
+    'index_title'    => 'Almacenes',
+    'index_subtitle' => 'Depósitos, sucursales y locales del workspace.',
+    'create_title'   => 'Crear almacén',
+    'create_subtitle'=> 'Completa los datos para crear un nuevo registro.',
+    'edit_title'     => 'Editar almacén',
+    'delete_title'   => 'Eliminar almacén',
+    'show_title'     => 'Almacén — Información',
+    'trash_title'    => 'Papelera de almacenes',
+    'form_create_hint' => 'Completa los datos para crear un nuevo almacén.',
+    'empty_hint'     => 'No hay almacenes — crea el primero.',
+    'name_placeholder' => 'Ej: Almacén Central Lima',
+
+    'name'         => 'Nombre',
+    'name_hint'    => 'Nombre descriptivo del almacén. Aparece en selects, reportes y guías de despacho.',
+    'code'         => 'Código',
+    'code_hint'    => 'Identificador corto y único del almacén. Se usa en exports, SKUs y movimientos de stock.',
+    'description'  => 'Descripción',
+    'description_hint' => 'Notas internas sobre el almacén: horarios, zona de cobertura, responsable, observaciones.',
+    'address_line' => 'Dirección',
+    'address_line_hint' => 'Dirección física del almacén. Aparece en guías de despacho y notas de envío.',
+    'city'         => 'Ciudad',
+    'city_hint'    => 'Ciudad donde se ubica el almacén. Útil para filtros y ruteo logístico.',
+    'country'      => 'País',
+    'country_hint' => 'País del almacén. Aparece en exports y reportes consolidados.',
+    'type'         => 'Tipo',
+    'type_hint'    => 'Principal = casa matriz; Sucursal = tienda física; Dropship = proveedor; Virtual = sin stock real; Consignación = stock prestado.',
+    'is_default'   => 'Default',
+    'is_default_hint' => 'Si está activo, este almacén se selecciona automáticamente en cotizaciones, facturas y entradas de stock.',
+    'manager'      => 'Encargado',
+    'manager_hint' => 'Usuario responsable del almacén. Recibe notificaciones de stock bajo y movimientos.',
+    'is_active'    => 'Estado',
+    'is_active_hint' => 'Si está inactivo, el almacén no aparece en selects y no acepta nuevos movimientos.',
+    'filter_name'  => 'Nombre',
+
+    'type_options' => [
+        'main'        => 'Principal',
+        'branch'      => 'Sucursal',
+        'dropship'    => 'Dropship',
+        'virtual'     => 'Virtual',
+        'consignment' => 'Consignación',
+    ],
+
+    'edit_hint'   => 'Modificar este registro',
+    'delete_hint' => 'Eliminar (queda en papelera)',
+    'restore_hint'=> 'Volverá a estar disponible en el listado principal.',
+
+    'created' => 'Almacén creado.',
+    'saved'   => 'Almacén actualizado.',
+    'deleted' => 'Almacén eliminado.',
+
+    'delete_about'                 => 'Vas a eliminar ":name". Quedará en papelera.',
+    'deleted_description_required' => 'Indica el motivo del borrado.',
+    'deleted_description_min'      => 'El motivo debe tener al menos 3 caracteres.',
+    'deleted_description_max'      => 'El motivo no puede superar los 1000 caracteres.',
+
+    // Export
+    'export_filename'           => 'exportacion_almacenes',
+    'import_template_filename'  => 'plantilla-almacenes.xlsx',
+    'export_title'              => 'Reporte de Almacenes',
+    'export_limit_exceeded'     => 'El export en :format excede el límite (:count filas vs :limit máximo). Usa CSV para datasets grandes (sin límite).',
+    'export_format_limit_hint'  => 'Máximo :limit filas para este formato. Usa CSV para datasets grandes.',
+    'export_no_limit_hint'      => 'Sin límite — recomendado para datasets grandes.',
+
+    // Validation
+    'name_required'            => 'El nombre es obligatorio.',
+    'name_unique'              => 'Ya existe un almacén con ese nombre.',
+    'name_duplicate_in_batch'  => 'Nombre duplicado dentro del mismo batch.',
+    'code_required'            => 'El código es obligatorio.',
+    'type_required'            => 'Selecciona el tipo.',
+    'is_active_required'       => 'El campo estado es obligatorio.',
+
+    // Edit All
+    'edit_all_title'    => 'Almacén — Editar Todo',
+    'edit_all_subtitle' => 'Edita nombre y estado de muchos almacenes a la vez. Click "Guardar todo" para confirmar, "Cancelar" para descartar.',
+    'edit_all_changes'  => '{0} Sin cambios|{1} 1 cambio pendiente|[2,*] :count cambios pendientes',
+    'edit_all_save_all' => 'Guardar todo',
+    'edit_all_discard'  => 'Descartar cambios',
+    'edit_all_no_results' => 'No hay almacenes que coincidan con el filtro.',
+
+    'table_headers' => [
+        'editable_name'   => 'Nombre (editable)',
+        'editable_status' => 'Estado (editable)',
+    ],
+
+    // Onboarding tour
+    'tour' => [
+        'step1_title' => 'Bienvenido a Almacenes',
+        'step1_body'  => 'Este es tu módulo de almacenes — depósitos, sucursales, locales virtuales. Te mostramos los puntos clave en menos de 1 minuto.',
+        'step2_title' => 'Filtros',
+        'step2_body'  => 'Busca y filtra por nombre, código, tipo, ciudad, estado. Los filtros activos aparecen como chips arriba de la tabla.',
+        'step3_title' => 'Vistas guardadas',
+        'step3_body'  => 'Guarda tu combinación favorita de filtros + columnas + orden y aplícala después con un clic.',
+        'step4_title' => 'Columnas',
+        'step4_body'  => 'Muestra/oculta columnas y se recuerda tu elección. Las marcadas como "obligatorias" no se pueden ocultar.',
+        'step5_title' => 'Exportar & Importar',
+        'step5_body'  => 'Exporta a Excel/PDF/Word en segundo plano. Importa desde Excel/CSV con vista previa antes de confirmar.',
+        'step6_title' => 'Editar muchos a la vez',
+        'step6_body'  => '"Editar todo" permite modificar nombre y estado de varios almacenes juntos.',
+        'step7_title' => 'Favoritos ★',
+        'step7_body'  => 'La estrella ★ marca un almacén como favorito. Los favoritos aparecen siempre arriba.',
+        'step8_title' => 'Operaciones masivas',
+        'step8_body'  => 'Selecciona filas con los checkboxes — aparece una barra para activar, desactivar, eliminar o restaurar en lote.',
+        'step9_title' => '¿Necesitas un repaso?',
+        'step9_body'  => 'Reabre este tour cuando quieras con el botón ? aquí arriba.',
+    ],
+];

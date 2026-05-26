@@ -1,0 +1,34 @@
+<?php
+
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
+
+// Purga diaria de soft-deleted antiguos según config/purge.php.
+// Corre a las 03:00 (hora baja de tráfico) y se loguea para inspección.
+Schedule::command('app:purge-soft-deleted')
+    ->dailyAt('03:00')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/purge.log'));
+
+// Limpieza de archivos físicos de exports expirados o descargados (>24h).
+// Corre cada hora — el costo es bajo (solo I/O del disco) y mantiene
+// `storage/app/downloads/` chico sin acumular MBs de reportes viejos.
+Schedule::command('app:cleanup-expired-downloads')
+    ->hourly()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/cleanup-downloads.log'));
+
+// Purga notificaciones de automation con mas de 12 horas. Las notifs de
+// automation son info ambient (no requieren ack), se autoborran para que
+// el bell no se llene. Otras categorias (security, plan_change) no se tocan.
+Schedule::command('automations:purge-old-notifications')
+    ->hourly()
+    ->withoutOverlapping()
+    ->onOneServer();

@@ -1,0 +1,182 @@
+<script setup>
+import { computed } from 'vue';
+import { Head, useForm } from '@inertiajs/vue3';
+import {
+    Card, Form, FormItem, Input, Alert, Tag,
+} from 'ant-design-vue';
+import { DeleteOutlined } from '@ant-design/icons-vue';
+
+import AppLayout from '@/Layouts/AppLayout.vue';
+import SectionHeader from '@/Components/Common/SectionHeader.vue';
+import DeleteFooter from '@/Components/Common/DeleteFooter.vue';
+
+defineOptions({ layout: AppLayout });
+
+const props = defineProps({
+    order:      { type: Object, required: true },
+    dependents: { type: Object, default: () => ({}) },
+});
+
+const hasDependents = computed(() => Object.keys(props.dependents).length > 0);
+
+const statusColor = {
+    draft: 'default', submitted: 'blue', confirmed: 'cyan',
+    partially_received: 'gold', received: 'green',
+    closed: 'purple', cancelled: 'red',
+};
+
+const form = useForm({
+    deleted_description: '',
+});
+
+const submit = () => {
+    form.delete(route('business_management.purchase_orders.deleteSave', props.order.slug), {
+        preserveScroll: true,
+    });
+};
+</script>
+
+<template>
+    <Head :title="$t('global.delete') + ' — ' + $t('purchase_orders.singular')" />
+
+    <div class="delete-page">
+        <SectionHeader
+            :back-href="route('business_management.purchase_orders.index')"
+            :title="$t('global.delete') + ' ' + $t('purchase_orders.record')"
+            :subtitle="$t('purchase_orders.delete_hint')"
+            icon-bg="var(--color-danger)"
+        >
+            <template #icon><DeleteOutlined /></template>
+        </SectionHeader>
+
+        <Card class="delete-card" :bodyStyle="{ padding: '24px 28px' }">
+            <Alert type="warning" show-icon class="mb-4">
+                <template #message>
+                    {{ $t('purchase_orders.delete_about', { name: order.reference }) }}
+                </template>
+                <template #description>
+                    {{ $t('global.delete_reason_hint') }}
+                </template>
+            </Alert>
+
+            <Alert v-if="hasDependents" type="error" show-icon class="mb-4">
+                <template #message>
+                    {{ $t('global.has_dependents_warning') }}
+                </template>
+                <template #description>
+                    <ul class="dependents-list">
+                        <li v-for="(d, key) in dependents" :key="key">
+                            {{ $t('global.has_dependents_detail', { count: d.count, label: d.label }) }}
+                        </li>
+                    </ul>
+                    <p class="dependents-note">{{ $t('global.has_dependents_proceed') }}</p>
+                </template>
+            </Alert>
+
+            <div class="record-summary">
+                <div class="record-summary__row">
+                    <span class="record-summary__label">ID</span>
+                    <span class="record-summary__value">{{ order.id }}</span>
+                </div>
+                <div class="record-summary__row">
+                    <span class="record-summary__label">{{ $t('purchase_orders.reference') }}</span>
+                    <span class="record-summary__value">{{ order.reference }}</span>
+                </div>
+                <div v-if="order.supplier" class="record-summary__row">
+                    <span class="record-summary__label">{{ $t('purchase_orders.supplier') }}</span>
+                    <span class="record-summary__value">{{ order.supplier.name }}</span>
+                </div>
+                <div v-if="order.warehouse" class="record-summary__row">
+                    <span class="record-summary__label">{{ $t('purchase_orders.warehouse') }}</span>
+                    <span class="record-summary__value">{{ order.warehouse.name }}</span>
+                </div>
+                <div class="record-summary__row">
+                    <span class="record-summary__label">{{ $t('purchase_orders.status') }}</span>
+                    <span class="record-summary__value">
+                        <Tag :color="statusColor[order.status] || 'default'" :bordered="false">
+                            {{ $t('purchase_orders.status_options.' + order.status) }}
+                        </Tag>
+                    </span>
+                </div>
+                <div v-if="order.grand_total" class="record-summary__row">
+                    <span class="record-summary__label">{{ $t('purchase_orders.grand_total') }}</span>
+                    <span class="record-summary__value">{{ order.currency_code }} {{ order.grand_total }}</span>
+                </div>
+            </div>
+
+            <Form layout="vertical" @submit.prevent="submit">
+                <FormItem
+                    :label="$t('global.delete_description')"
+                    required
+                    :validate-status="form.errors.deleted_description ? 'error' : ''"
+                    :help="form.errors.deleted_description"
+                >
+                    <Input.TextArea
+                        v-model:value="form.deleted_description"
+                        :rows="4"
+                        :placeholder="$t('global.delete_reason_placeholder')"
+                        :maxlength="1000"
+                        showCount
+                        autofocus
+                    />
+                </FormItem>
+
+                <DeleteFooter
+                    :cancel-href="route('business_management.purchase_orders.index')"
+                    :processing="form.processing"
+                />
+            </Form>
+        </Card>
+    </div>
+</template>
+
+<style scoped>
+.delete-card { border-radius: 6px; }
+
+.record-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 16px;
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+.record-summary__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.875rem;
+    min-width: 0;
+}
+.record-summary__label {
+    color: var(--color-text-muted);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+.record-summary__value {
+    color: var(--color-text);
+    text-align: right;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.mb-4 { margin-bottom: 16px; }
+
+.dependents-list {
+    margin: 4px 0 8px 0;
+    padding-left: 20px;
+    font-size: 0.875rem;
+}
+.dependents-list li { line-height: 1.5; }
+.dependents-note {
+    margin: 4px 0 0 0;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+</style>

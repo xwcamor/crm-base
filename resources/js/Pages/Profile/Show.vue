@@ -1,0 +1,427 @@
+<script setup>
+import { ref, computed } from 'vue';
+import { Head, useForm, router, usePage } from '@inertiajs/vue3';
+import {
+    Card, Tabs, TabPane, Input, Button, Avatar, Tag, Alert, Descriptions, DescriptionsItem,
+    Form, FormItem, Select, SelectOption, notification,
+} from 'ant-design-vue';
+import {
+    UserOutlined, LockOutlined, SettingOutlined, MailOutlined,
+    GlobalOutlined, BankOutlined, SafetyOutlined,
+} from '@ant-design/icons-vue';
+import dayjs from 'dayjs';
+import axios from 'axios';
+
+import AppLayout from '@/Layouts/AppLayout.vue';
+import { useI18n } from '@/Plugins/i18n';
+
+const { t } = useI18n();
+
+defineOptions({ layout: AppLayout });
+
+const props = defineProps({
+    profile:         { type: Object, required: true },
+    currencyOptions: { type: Array, default: () => [] },
+});
+
+const page = usePage();
+
+// ─── Tab activo (persistido en URL hash) ───────────────────────────────────
+const activeTab = ref(window.location.hash?.replace('#', '') || 'info');
+const onTabChange = (key) => {
+    activeTab.value = key;
+    window.history.replaceState(null, '', `#${key}`);
+};
+
+// ─── Info form ────────────────────────────────────────────────────────────
+// El TZ propio del user puede ser null (heredar del workspace). El form
+// arranca con el valor actual o '' (representa la opción "heredar").
+const infoForm = useForm({
+    name:                    props.profile.name,
+    timezone:                props.profile.timezone ?? '',
+    preferred_currency_code: props.profile.preferred_currency_code ?? null,
+});
+
+const submitInfo = () => {
+    infoForm.put(route('profile.update'), { preserveScroll: true });
+};
+
+// ─── Timezone options ─────────────────────────────────────────────────────
+// Lista compartida por Inertia (page.props.tz.available). El componente
+// agrega arriba la opción especial '' = "heredar del workspace" para que
+// el user pueda volver atrás sin tener que mantener un toggle aparte.
+const availableTimezones = computed(() => page.props.tz?.available ?? []);
+const inheritedTzLabel = computed(() => {
+    const workspaceTz = props.profile.tenant?.timezone;
+    return workspaceTz
+        ? `${t('global.tz_inherit_from_workspace')} (${workspaceTz})`
+        : t('global.tz_inherit_from_workspace');
+});
+
+// ─── Password form ────────────────────────────────────────────────────────
+const passwordForm = useForm({
+    current_password: '',
+    password: '',
+    password_confirmation: '',
+});
+
+const submitPassword = () => {
+    passwordForm.put(route('profile.update_password'), {
+        preserveScroll: true,
+        onSuccess: () => passwordForm.reset(),
+    });
+};
+
+// ─── Preferencias: tours completados ───────────────────────────────────────
+const tours = computed(() => page.props.auth?.user?.module_tours ?? {});
+const tourCount = computed(() => Object.keys(tours.value).length);
+
+const resetTours = async () => {
+    // Borramos por entero las marcas de tour. Lo más rápido: pegarle al
+    // mismo endpoint con una bandera, o exponer un DELETE. Como no tenemos
+    // ese endpoint, usamos updateOrCreate desde el cliente vía
+    // tour-complete con un flag — pero más limpio: hagamos un endpoint
+    // dedicado. Por ahora, posteamos a un endpoint helper:
+    try {
+        await axios.delete(route('user_prefs.module_tours.complete'));
+        notification.success({
+            message: t('profile.reset_tours_done'),
+            placement: 'topRight',
+        });
+        // Forzar recarga del shared prop auth para actualizar tourCount.
+        router.reload({ only: ['auth'], preserveScroll: true });
+    } catch (e) {
+        notification.error({
+            message: t('global.error'),
+            placement: 'topRight',
+        });
+    }
+};
+
+const formatDate = (d) => d ? dayjs(d).format('YYYY-MM-DD') : '—';
+</script>
+
+<template>
+    <Head :title="$t('profile.title')" />
+
+    <div class="profile-page">
+        <!-- Header con avatar + datos básicos -->
+        <div class="profile-hero">
+            <Avatar
+                :src="profile.photo_url || undefined"
+                :size="72"
+                :style="{ background: '#0A6ED1', fontSize: '1.6rem' }"
+            >
+                {{ profile.name?.charAt(0)?.toUpperCase() }}
+            </Avatar>
+            <div class="profile-hero__info">
+                <h1>{{ profile.name }}</h1>
+                <p class="profile-hero__email">
+                    <MailOutlined /> {{ profile.email }}
+                </p>
+                <div class="profile-hero__tags">
+                    <Tag v-for="role in profile.roles" :key="role" color="blue" :bordered="false">
+                        {{ role }}
+                    </Tag>
+                    <Tag :color="profile.is_active ? 'success' : 'default'" :bordered="false">
+                        {{ profile.is_active ? $t('global.active') : $t('global.inactive') }}
+                    </Tag>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <Card :bodyStyle="{ padding: '20px 24px' }" class="profile-card">
+            <Tabs :activeKey="activeTab" @change="onTabChange">
+                <!-- ── Tab 1: Información ─────────────────────────────── -->
+                <TabPane key="info">
+                    <template #tab>
+                        <span><UserOutlined /> {{ $t('profile.tab_info') }}</span>
+                    </template>
+
+                    <Form layout="vertical" @submit.prevent="submitInfo" class="profile-form">
+                        <FormItem
+                            :label="$t('profile.name')"
+                            :validate-status="infoForm.errors.name ? 'error' : ''"
+                            :help="infoForm.errors.name"
+                        >
+                            <Input
+                                v-model:value="infoForm.name"
+                                size="large"
+                                :prefix="undefined"
+                            >
+                                <template #prefix><UserOutlined /></template>
+                            </Input>
+                        </FormItem>
+
+                        <FormItem :label="$t('profile.email')">
+                            <Input :value="profile.email" disabled size="large">
+                                <template #prefix><MailOutlined /></template>
+                            </Input>
+                            <small class="form-hint">{{ $t('profile.email_readonly_hint') }}</small>
+                        </FormItem>
+
+                        <FormItem
+                            :label="$t('profile.timezone')"
+                            :validate-status="infoForm.errors.timezone ? 'error' : ''"
+                            :help="infoForm.errors.timezone || $t('profile.timezone_hint')"
+                        >
+                            <!-- Selector con búsqueda — la lista tiene ~400 timezones.
+                                 La primera opción ('') deja al user heredar del workspace. -->
+                            <Select
+                                v-model:value="infoForm.timezone"
+                                size="large"
+                                show-search
+                                option-filter-prop="children"
+                                :placeholder="$t('profile.timezone')"
+                            >
+                                <SelectOption value="">{{ inheritedTzLabel }}</SelectOption>
+                                <SelectOption v-for="tz in availableTimezones" :key="tz" :value="tz">
+                                    {{ tz }}
+                                </SelectOption>
+                            </Select>
+                        </FormItem>
+
+                        <FormItem
+                            :label="$t('profile.preferred_currency_code')"
+                            :validate-status="infoForm.errors.preferred_currency_code ? 'error' : ''"
+                            :help="infoForm.errors.preferred_currency_code || $t('profile.preferred_currency_hint')"
+                        >
+                            <Select
+                                v-model:value="infoForm.preferred_currency_code"
+                                :options="currencyOptions"
+                                size="large"
+                                show-search
+                                allow-clear
+                                :placeholder="$t('profile.preferred_currency_placeholder')"
+                                :filter-option="(input, opt) => (opt.label ?? '').toLowerCase().includes(input.toLowerCase())"
+                            />
+                        </FormItem>
+
+                        <Descriptions :column="1" bordered size="small" class="profile-desc">
+                            <DescriptionsItem v-if="profile.tenant" :label="$t('profile.tenant')">
+                                <BankOutlined /> {{ profile.tenant.name }}
+                            </DescriptionsItem>
+                            <DescriptionsItem v-if="profile.country" :label="$t('profile.country')">
+                                <GlobalOutlined /> {{ profile.country.name }}
+                            </DescriptionsItem>
+                            <DescriptionsItem :label="$t('profile.member_since')">
+                                {{ formatDate(profile.created_at) }}
+                            </DescriptionsItem>
+                        </Descriptions>
+
+                        <div class="form-footer">
+                            <Button
+                                type="primary"
+                                size="large"
+                                html-type="submit"
+                                :loading="infoForm.processing"
+                                :disabled="!infoForm.isDirty"
+                            >
+                                {{ $t('profile.save_info') }}
+                            </Button>
+                        </div>
+                    </Form>
+                </TabPane>
+
+                <!-- ── Tab 2: Contraseña ──────────────────────────────── -->
+                <TabPane key="password">
+                    <template #tab>
+                        <span><LockOutlined /> {{ $t('profile.tab_password') }}</span>
+                    </template>
+
+                    <div class="password-section">
+                        <h3 class="section-title">{{ $t('profile.password_title') }}</h3>
+                        <p class="section-subtitle">{{ $t('profile.password_subtitle') }}</p>
+
+                        <Alert
+                            v-if="!profile.has_password"
+                            type="info"
+                            show-icon
+                            :message="$t('profile.no_password_hint')"
+                            class="mb-3"
+                        />
+
+                        <Form layout="vertical" @submit.prevent="submitPassword" class="profile-form">
+                            <FormItem
+                                v-if="profile.has_password"
+                                :label="$t('profile.current_password')"
+                                :validate-status="passwordForm.errors.current_password ? 'error' : ''"
+                                :help="passwordForm.errors.current_password"
+                            >
+                                <Input.Password
+                                    v-model:value="passwordForm.current_password"
+                                    size="large"
+                                    autocomplete="current-password"
+                                >
+                                    <template #prefix><LockOutlined /></template>
+                                </Input.Password>
+                            </FormItem>
+
+                            <FormItem
+                                :label="$t('profile.new_password')"
+                                :validate-status="passwordForm.errors.password ? 'error' : ''"
+                                :help="passwordForm.errors.password"
+                            >
+                                <Input.Password
+                                    v-model:value="passwordForm.password"
+                                    size="large"
+                                    autocomplete="new-password"
+                                >
+                                    <template #prefix><LockOutlined /></template>
+                                </Input.Password>
+                            </FormItem>
+
+                            <FormItem
+                                :label="$t('profile.confirm_password')"
+                            >
+                                <Input.Password
+                                    v-model:value="passwordForm.password_confirmation"
+                                    size="large"
+                                    autocomplete="new-password"
+                                >
+                                    <template #prefix><LockOutlined /></template>
+                                </Input.Password>
+                            </FormItem>
+
+                            <div class="form-footer">
+                                <Button
+                                    type="primary"
+                                    size="large"
+                                    html-type="submit"
+                                    :loading="passwordForm.processing"
+                                    :disabled="!passwordForm.password || !passwordForm.password_confirmation"
+                                >
+                                    <SafetyOutlined /> {{ $t('profile.change_password') }}
+                                </Button>
+                            </div>
+                        </Form>
+                    </div>
+                </TabPane>
+
+                <!-- ── Tab 3: Preferencias ────────────────────────────── -->
+                <TabPane key="preferences">
+                    <template #tab>
+                        <span><SettingOutlined /> {{ $t('profile.tab_preferences') }}</span>
+                    </template>
+
+                    <div class="prefs-section">
+                        <h3 class="section-title">{{ $t('profile.preferences_title') }}</h3>
+                        <p class="section-subtitle">{{ $t('profile.preferences_hint') }}</p>
+
+                        <Descriptions :column="1" bordered size="small" class="profile-desc">
+                            <DescriptionsItem :label="$t('profile.tour_status')">
+                                {{ tourCount }} {{ tourCount === 1 ? $t('global.tour_show_again').toLowerCase() : 'tours' }}
+                                <Button
+                                    v-if="tourCount > 0"
+                                    type="link"
+                                    size="small"
+                                    @click="resetTours"
+                                >
+                                    {{ $t('profile.reset_tours') }}
+                                </Button>
+                            </DescriptionsItem>
+                        </Descriptions>
+                    </div>
+                </TabPane>
+            </Tabs>
+        </Card>
+    </div>
+</template>
+
+<style scoped>
+.profile-page { /* fullscreen — sin max-width, ocupa todo el ancho disponible del content */ }
+
+.profile-hero {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #0A6ED1 0%, #064C92 100%);
+    color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(10, 110, 209, 0.15);
+}
+.profile-hero__info { flex: 1; min-width: 0; }
+.profile-hero h1 {
+    color: #fff;
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+    letter-spacing: -0.01em;
+}
+.profile-hero__email {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.875rem;
+    margin: 0 0 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.profile-hero__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.profile-hero__tags :deep(.ant-tag) {
+    background: rgba(255, 255, 255, 0.15);
+    border: 0;
+    color: #fff;
+}
+
+.profile-card { border-radius: 8px; }
+
+.profile-form { /* sin max-width — los FormItem usan Row/Col internos si necesitan limitar */ }
+
+.form-hint {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    margin-top: 4px;
+    display: block;
+}
+
+.form-footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.profile-desc { margin-top: 16px; }
+
+.password-section .section-title,
+.prefs-section .section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0 0 4px 0;
+}
+.password-section .section-subtitle,
+.prefs-section .section-subtitle {
+    color: #6A6D70;
+    font-size: 0.8125rem;
+    margin: 0 0 16px 0;
+}
+
+.mb-3 { margin-bottom: 12px; }
+
+@media (max-width: 768px) {
+    .profile-hero {
+        flex-direction: column;
+        text-align: center;
+    }
+    .profile-hero__tags { justify-content: center; }
+}
+</style>
+
+<style>
+html[data-theme="dark"] .profile-hero {
+    background: linear-gradient(135deg, #354A5F 0%, #1a2530 100%);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+html[data-theme="dark"] .form-footer { border-top-color: #3f4448; }
+html[data-theme="dark"] .password-section .section-title,
+html[data-theme="dark"] .prefs-section .section-title { color: #e5e6e7; }
+html[data-theme="dark"] .password-section .section-subtitle,
+html[data-theme="dark"] .prefs-section .section-subtitle { color: #a8aaae; }
+</style>

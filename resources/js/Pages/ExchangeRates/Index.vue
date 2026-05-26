@@ -1,0 +1,573 @@
+<script setup>
+import { computed, ref } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { Card, Tag, Button, Tooltip, Space } from 'ant-design-vue';
+import {
+    PlusOutlined, EditOutlined, InboxOutlined,
+    DownloadOutlined, UploadOutlined, QuestionCircleOutlined,
+    AuditOutlined, FilterOutlined, CloseCircleFilled,
+} from '@ant-design/icons-vue';
+
+import AppLayout from '@/Layouts/AppLayout.vue';
+import ResponsiveTable from '@/Components/Common/ResponsiveTable.vue';
+import ColumnSelector from '@/Components/Common/ColumnSelector.vue';
+import FilterBar from '@/Components/Common/FilterBar.vue';
+import AdvancedFilterDrawer from '@/Components/Common/AdvancedFilterDrawer.vue';
+import FilterChips from '@/Components/Common/FilterChips.vue';
+import ExportDialog from '@/Components/Common/ExportDialog.vue';
+import ImportDialog from '@/Components/Common/ImportDialog.vue';
+import SavedViews from '@/Components/Common/SavedViews.vue';
+
+import ExchangeRatesBulkBar from '@/Components/ExchangeRates/ExchangeRatesBulkBar.vue';
+import ExchangeRatesBulkDeleteModal from '@/Components/ExchangeRates/ExchangeRatesBulkDeleteModal.vue';
+import ExchangeRatesFavoriteCell from '@/Components/ExchangeRates/ExchangeRatesFavoriteCell.vue';
+import ExchangeRatesDetailDrawer from '@/Components/ExchangeRates/ExchangeRatesDetailDrawer.vue';
+import ExchangeRatesMobileBottomBar from '@/Components/ExchangeRates/ExchangeRatesMobileBottomBar.vue';
+import ExchangeRatesMobileDrawers from '@/Components/ExchangeRates/ExchangeRatesMobileDrawers.vue';
+import ExchangeRatesPageHeader from '@/Components/ExchangeRates/ExchangeRatesPageHeader.vue';
+import ExchangeRatesActionsCell from '@/Components/ExchangeRates/ExchangeRatesActionsCell.vue';
+import ExchangeRatesEmptyState from '@/Components/ExchangeRates/ExchangeRatesEmptyState.vue';
+
+import { useAuth } from '@/Composables/useAuth';
+import { useColumnPreferences } from '@/Composables/useColumnPreferences';
+import { useModuleFilters } from '@/Composables/useModuleFilters';
+import { useModuleBulkActions } from '@/Composables/useModuleBulkActions';
+import { useModuleUndoToast } from '@/Composables/useModuleUndoToast';
+import { useModuleFavorites } from '@/Composables/useModuleFavorites';
+import { useModuleDrawer } from '@/Composables/useModuleDrawer';
+import { useModuleSavedViews } from '@/Composables/useModuleSavedViews';
+import { useModuleListMeta } from '@/Composables/useModuleListMeta';
+import { useModuleTour } from '@/Composables/useModuleTour';
+import { useKeyboardShortcuts } from '@/Composables/useKeyboardShortcuts';
+import { useViewport } from '@/Composables/useViewport';
+import { useDateFormat } from '@/Composables/useDateFormat';
+import { usePlanFeatures } from '@/Composables/usePlanFeatures';
+import { useI18n } from '@/Plugins/i18n';
+
+const { canUse: canUsePlanFeature } = usePlanFeatures();
+
+import {
+    exchangeRatesFilterFields, exchangeRatesEmptyFilters, hydrateExchangeRatesFilters,
+    exchangeRatesFiltersToQuery, exchangeRatesFiltersSummary,
+    serializeSavedFilters, deserializeSavedFilters,
+} from './config/filters';
+import { exchangeRatesTableColumns } from './config/columns';
+import { exchangeRatesExportableColumns, exchangeRatesExportEndpoints } from './config/exports';
+import { exchangeRatesTourSteps } from './config/tour';
+
+defineOptions({ layout: AppLayout });
+
+const { t } = useI18n();
+const { can, isSuper, canSeeAudit } = useAuth();
+const { formatDateTime } = useDateFormat();
+
+const props = defineProps({
+    rates:           { type: Object, required: true },
+    filters:         { type: Object, default: () => ({}) },
+    filterSchema:    { type: Array,  default: () => [] },
+    currencyOptions: { type: Array,  default: () => [] },
+});
+
+const filterFields = computed(() =>
+    exchangeRatesFilterFields(t, { currencyOptions: props.currencyOptions }),
+);
+
+const {
+    filters, reload, hasActiveFilters, clearFilters, filtersSummary, buildQueryData,
+} = useModuleFilters({
+    serverFilters: props.filters,
+    hydrate:       hydrateExchangeRatesFilters,
+    toQuery:       exchangeRatesFiltersToQuery,
+    summary:       exchangeRatesFiltersSummary,
+    empty:         exchangeRatesEmptyFilters,
+    only:          ['rates', 'filters'],
+    t,
+});
+
+const advancedFilterOpen = ref(false);
+const advancedWhere = ref(Array.isArray(props.filters?.advanced_where) ? props.filters.advanced_where : []);
+const advancedCount = computed(() => advancedWhere.value.length);
+
+const applyAdvancedFilters = (clauses) => {
+    advancedWhere.value = clauses;
+    router.reload({
+        data: {
+            ...buildQueryData(filters.value),
+            advanced_where: clauses.length > 0 ? JSON.stringify(clauses) : null,
+        },
+        only: ['rates', 'filters'],
+        preserveScroll: true,
+        preserveState: true,
+    });
+};
+
+const clearAdvancedFilters = () => {
+    advancedWhere.value = [];
+    applyAdvancedFilters([]);
+};
+
+const { counterLabel } = useModuleListMeta({
+    pagination: computed(() => props.rates),
+    hasActiveFilters,
+    t,
+});
+
+const allColumns = computed(() =>
+    exchangeRatesTableColumns(t, { isSuper: isSuper.value }),
+);
+const { visibleColumnKeys, columns } = useColumnPreferences(allColumns);
+
+const tablePagination = computed(() => ({
+    current:  props.rates.current_page,
+    pageSize: props.rates.per_page,
+    total:    props.rates.total,
+    showSizeChanger: true,
+    pageSizeOptions: ['10', '25', '50', '100'],
+}));
+
+const onTableChange = (pag, _f, sorter) => {
+    const sort = sorter?.field || props.filters.sort;
+    const direction = sorter?.order === 'ascend' ? 'asc'
+                    : sorter?.order === 'descend' ? 'desc'
+                    : props.filters.direction;
+    reload({ page: pag.current, per_page: pag.pageSize, sort, direction });
+};
+
+useModuleUndoToast('business_management.exchange_rates.undo_last_delete');
+
+const { submitting: favoriteSubmitting, toggle: toggleFavorite } = useModuleFavorites('exchange_rates', 'exchange_rates');
+
+const { isMobile: isMobileScreen } = useViewport(768);
+const drawerWidth = computed(() => isMobileScreen.value ? '100%' : 480);
+const { open: drawerVisible, selected: selectedRate, openDetails } = useModuleDrawer({ module: 'exchange_rates' });
+
+const {
+    selectedRowKeys, rowSelection, clearSelection,
+    bulkOpen, bulkReason, bulkSubmitting, bulkError, bulkActivating,
+    openBulkDelete, bulkSetActive, confirmBulkDelete,
+} = useModuleBulkActions({
+    bulkSetActiveRoute: 'business_management.exchange_rates.bulk_set_active',
+    bulkDeleteRoute:    'business_management.exchange_rates.bulk_delete',
+    resourceLabel:      t('exchange_rates.records'),
+});
+
+const duplicating = ref(null);
+const duplicate = (record) => {
+    duplicating.value = record.id;
+    router.post(route('business_management.exchange_rates.duplicate', record.slug), {}, {
+        preserveScroll: true,
+        onFinish: () => { duplicating.value = null; },
+    });
+};
+
+const exportOpen = ref(false);
+const importOpen = ref(false);
+const exportableColumns = computed(() => exchangeRatesExportableColumns(t));
+const exportEndpoints   = computed(() => exchangeRatesExportEndpoints());
+
+const { currentViewState, applySavedState } = useModuleSavedViews({
+    filters,
+    visibleColumnKeys,
+    allColumns,
+    serverFilters: props.filters,
+    serialize:     serializeSavedFilters,
+    deserialize:   deserializeSavedFilters,
+    clearFilters,
+    reload,
+});
+
+const tour = useModuleTour({ module: 'exchange_rates', steps: () => exchangeRatesTourSteps(t) });
+
+const filtersDrawerOpen = ref(false);
+const otrosDrawerOpen   = ref(false);
+const goToCreate  = () => router.visit(route('business_management.exchange_rates.create'));
+const goToTrash   = () => router.visit(route('business_management.exchange_rates.trash'));
+const goToAudit   = () => router.visit(route('system_management.audit_logs.index', { module: 'exchange_rates' }));
+const goToEditAll = () => router.visit(route('business_management.exchange_rates.edit_all'));
+
+useKeyboardShortcuts({
+    'ctrl+n': () => can('exchange_rates.create') && router.visit(route('business_management.exchange_rates.create')),
+    'esc': () => {
+        if (drawerVisible.value)          drawerVisible.value = false;
+        else if (exportOpen.value)        exportOpen.value = false;
+        else if (importOpen.value)        importOpen.value = false;
+        else if (bulkOpen.value)          bulkOpen.value = false;
+        else if (filtersDrawerOpen.value) filtersDrawerOpen.value = false;
+        else if (otrosDrawerOpen.value)   otrosDrawerOpen.value = false;
+    },
+    'ctrl+f': () => {
+        if (isMobileScreen.value) filtersDrawerOpen.value = true;
+        else document.querySelector('.filter-bar input, .filter-bar .ant-select-selector')?.focus();
+    },
+});
+
+const goEdit   = (record) => router.visit(route('business_management.exchange_rates.edit',   record.slug));
+const goDelete = (record) => router.visit(route('business_management.exchange_rates.delete', record.slug));
+</script>
+
+<template>
+    <Head :title="$t('exchange_rates.plural')" />
+
+    <div>
+        <div class="page-header">
+            <ExchangeRatesPageHeader
+                :title="$t('exchange_rates.plural')"
+                :counter-label="counterLabel"
+            />
+
+            <Space wrap class="hide-on-mobile">
+                <span v-if="canUsePlanFeature('saved_views')" data-tour="saved-views">
+                    <SavedViews
+                        module="exchange_rates"
+                        :current-state="currentViewState"
+                        @apply="applySavedState"
+                        @default-loaded="applySavedState"
+                    />
+                </span>
+                <span data-tour="columns">
+                    <ColumnSelector
+                        :columns="allColumns"
+                        v-model="visibleColumnKeys"
+                        storage-key="exchange_rates"
+                    />
+                </span>
+                <span data-tour="export-import">
+                    <Tooltip :title="$t('global.export_hint')">
+                        <Button @click="exportOpen = true">
+                            <DownloadOutlined /> {{ $t('global.export') }}
+                        </Button>
+                    </Tooltip>
+                    <Tooltip v-if="can('exchange_rates.create') && canUsePlanFeature('imports')" :title="$t('global.import_hint')">
+                        <Button style="margin-left: 8px;" @click="importOpen = true">
+                            <UploadOutlined /> {{ $t('global.import') }}
+                        </Button>
+                    </Tooltip>
+                </span>
+                <Tooltip v-if="can('exchange_rates.edit') && canUsePlanFeature('edit_all')" :title="$t('global.edit_all_hint')">
+                    <Link :href="route('business_management.exchange_rates.edit_all')" data-tour="edit-all">
+                        <Button>
+                            <EditOutlined /> {{ $t('global.edit_all') }}
+                        </Button>
+                    </Link>
+                </Tooltip>
+                <Tooltip :title="$t('global.tour_show_again')" data-tour="tour-help">
+                    <Button @click="tour.restart()">
+                        <QuestionCircleOutlined />
+                    </Button>
+                </Tooltip>
+                <Tooltip v-if="isSuper" :title="$t('global.view_deleted_hint')">
+                    <Link :href="route('business_management.exchange_rates.trash')" data-tour="trash">
+                        <Button>
+                            <InboxOutlined /> {{ $t('global.view_deleted') }}
+                        </Button>
+                    </Link>
+                </Tooltip>
+                <Tooltip v-if="canSeeAudit" :title="$t('global.audit_hint')">
+                    <Link :href="route('system_management.audit_logs.index', { module: 'exchange_rates' })" data-tour="audit">
+                        <Button>
+                            <AuditOutlined /> {{ $t('sidebar.group_audit') }}
+                        </Button>
+                    </Link>
+                </Tooltip>
+                <Tooltip v-if="can('exchange_rates.create')" :title="$t('global.create_record_hint')">
+                    <Link :href="route('business_management.exchange_rates.create')">
+                        <Button type="primary">
+                            <PlusOutlined /> {{ $t('exchange_rates.new') }}
+                        </Button>
+                    </Link>
+                </Tooltip>
+            </Space>
+        </div>
+
+        <FilterBar
+            v-if="!isMobileScreen"
+            :fields="filterFields"
+            v-model="filters"
+            storage-key="exchange_rates"
+            data-tour="filters"
+        >
+            <template #actions>
+                <Tooltip :title="$t('global.advanced_filters_hint')">
+                    <Button
+                        @click="advancedFilterOpen = true"
+                        :type="advancedCount > 0 ? 'primary' : 'default'"
+                        class="adv-filter-btn"
+                    >
+                        <FilterOutlined /> {{ $t('global.advanced_filters') }}
+                        <span v-if="advancedCount > 0" class="adv-filter-btn__count">{{ advancedCount }}</span>
+                        <Tooltip v-if="advancedCount > 0" :title="$t('global.clear')">
+                            <CloseCircleFilled
+                                class="adv-filter-btn__clear"
+                                @click.stop="clearAdvancedFilters"
+                            />
+                        </Tooltip>
+                    </Button>
+                </Tooltip>
+            </template>
+        </FilterBar>
+
+        <div v-auto-animate>
+            <FilterChips :fields="filterFields" v-model="filters" />
+        </div>
+
+        <AdvancedFilterDrawer
+            v-model:open="advancedFilterOpen"
+            v-model="advancedWhere"
+            :schema="props.filterSchema"
+            @apply="applyAdvancedFilters"
+        />
+
+        <Card :bodyStyle="{ padding: 0 }" class="grid-card">
+            <div v-auto-animate>
+                <ExchangeRatesBulkBar
+                    v-if="selectedRowKeys.length > 0"
+                    :count="selectedRowKeys.length"
+                    :is-mobile="isMobileScreen"
+                    :bulk-activating="bulkActivating"
+                    :can-edit="can('exchange_rates.edit')"
+                    :can-delete="can('exchange_rates.delete')"
+                    @cancel="clearSelection"
+                    @set-active="bulkSetActive"
+                    @delete="openBulkDelete"
+                />
+            </div>
+
+            <ResponsiveTable
+                :dataSource="rates.data"
+                :columns="columns"
+                :pagination="tablePagination"
+                :row-selection="(can('exchange_rates.delete') || can('exchange_rates.edit')) ? rowSelection : null"
+                rowKey="id"
+                @change="onTableChange"
+                @row-click="openDetails"
+                data-tour="bulk"
+            >
+                <template #empty>
+                    <ExchangeRatesEmptyState
+                        :has-filters="hasActiveFilters"
+                        :can-create="can('exchange_rates.create')"
+                        @clear-filters="clearFilters"
+                        @open-import="importOpen = true"
+                    />
+                </template>
+                <template #bodyCell="{ column, record, text, isMobile }">
+                    <ExchangeRatesFavoriteCell
+                        v-if="column.key === 'favorite'"
+                        :record="record"
+                        :submitting="favoriteSubmitting"
+                        :data-tour="record === rates.data[0] ? 'favorites' : null"
+                        @toggle="toggleFavorite"
+                    />
+
+                    <template v-else-if="column.key === 'base_code' || column.key === 'quote_code'">
+                        <code class="mono">{{ record[column.dataIndex] }}</code>
+                    </template>
+
+                    <template v-else-if="column.key === 'rate'">
+                        <strong>{{ Number(record.rate).toFixed(6) }}</strong>
+                    </template>
+
+                    <template v-else-if="column.key === 'valid_at'">
+                        {{ record.valid_at ? formatDateTime(record.valid_at) : '—' }}
+                    </template>
+
+                    <template v-else-if="column.key === 'source'">
+                        <span class="source-cell">{{ record.source || '—' }}</span>
+                    </template>
+
+                    <template v-else-if="column.key === 'status'">
+                        <Tag :color="record.is_active ? 'success' : 'default'" :bordered="false">
+                            {{ record.is_active ? $t('global.active') : $t('global.inactive') }}
+                        </Tag>
+                    </template>
+
+                    <template v-else-if="column.key === 'tenant'">
+                        <Tag v-if="record.tenant" color="blue" :bordered="false">
+                            {{ record.tenant.name }}
+                        </Tag>
+                        <Tag v-else color="purple" :bordered="false">{{ $t('global.platform') }}</Tag>
+                    </template>
+
+                    <template v-else-if="column.key === 'created_at'">
+                        {{ formatDateTime(record.created_at) }}
+                    </template>
+
+                    <ExchangeRatesActionsCell
+                        v-else-if="column.key === 'actions'"
+                        :record="record"
+                        :is-mobile="isMobile"
+                        :can-edit="can('exchange_rates.edit')"
+                        :can-create="can('exchange_rates.create')"
+                        :can-delete="can('exchange_rates.delete')"
+                        :duplicating-id="duplicating"
+                        @edit="goEdit"
+                        @duplicate="duplicate"
+                        @delete="goDelete"
+                    />
+
+                    <template v-else>{{ text ?? record[column.dataIndex] ?? '' }}</template>
+                </template>
+            </ResponsiveTable>
+        </Card>
+
+        <ExchangeRatesDetailDrawer
+            v-model:open="drawerVisible"
+            :rate="selectedRate"
+            :width="drawerWidth"
+            :is-mobile="isMobileScreen"
+            :can-create="can('exchange_rates.create')"
+            :can-edit="can('exchange_rates.edit')"
+            :can-delete="can('exchange_rates.delete')"
+            :duplicating-id="duplicating"
+            @duplicate="duplicate"
+        />
+
+        <ExchangeRatesBulkDeleteModal
+            v-model:open="bulkOpen"
+            v-model:reason="bulkReason"
+            :count="selectedRowKeys.length"
+            :submitting="bulkSubmitting"
+            :error-msg="bulkError"
+            :resource-label="selectedRowKeys.length === 1 ? $t('exchange_rates.record') : $t('exchange_rates.records')"
+            @confirm="confirmBulkDelete"
+        />
+
+        <ExportDialog
+            v-model:open="exportOpen"
+            :columns="exportableColumns"
+            :selected-ids="selectedRowKeys"
+            :has-filters="hasActiveFilters"
+            :filters-summary="filtersSummary"
+            :current-filters="buildQueryData()"
+            :default-title="$t('exchange_rates.export_title')"
+            :endpoints="exportEndpoints"
+            :total-rows="rates.total ?? 0"
+            :total-unfiltered="rates.total_unfiltered ?? rates.total ?? 0"
+        />
+
+        <ImportDialog
+            v-model:open="importOpen"
+            :endpoint="route('business_management.exchange_rates.import')"
+            :template-url="route('business_management.exchange_rates.import_template')"
+            :resource-label="$t('exchange_rates.records')"
+        />
+
+        <ExchangeRatesMobileBottomBar
+            v-if="isMobileScreen && selectedRowKeys.length === 0"
+            :can-create="can('exchange_rates.create')"
+            :has-active-filters="hasActiveFilters"
+            @open-filters="filtersDrawerOpen = true"
+            @create="goToCreate"
+            @open-more="otrosDrawerOpen = true"
+        />
+
+        <ExchangeRatesMobileDrawers
+            v-model:filters-open="filtersDrawerOpen"
+            v-model:otros-open="otrosDrawerOpen"
+            v-model:filters="filters"
+            v-model:visible-columns="visibleColumnKeys"
+            :filter-fields="filterFields"
+            :all-columns="allColumns"
+            :can-create="can('exchange_rates.create')"
+            :can-edit="can('exchange_rates.edit')"
+            :is-super="isSuper"
+            :can-see-audit="canSeeAudit"
+            :advanced-count="advancedCount"
+            @open-advanced="advancedFilterOpen = true"
+            @clear-advanced="clearAdvancedFilters"
+            @open-export="exportOpen = true"
+            @open-import="importOpen = true"
+            @go-trash="goToTrash"
+            @go-audit="goToAudit"
+            @go-edit-all="goToEditAll"
+        />
+    </div>
+</template>
+
+<style scoped>
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.mono {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.8125rem;
+    background: var(--color-surface-alt);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.source-cell {
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+}
+
+.grid-card { border-radius: 6px; }
+.grid-card :deep(.ant-table-thead > tr > th) {
+    background: var(--color-surface-alt);
+    color: var(--color-text-strong);
+    font-weight: 600;
+    font-size: 0.8125rem;
+}
+.grid-card :deep(.ant-table-tbody > tr:hover > td) { background: var(--color-surface-hover) !important; }
+
+.grid-card :deep(.ant-table-tbody .row-actions-desktop) {
+    opacity: 0.45;
+    transition: opacity 0.15s ease;
+}
+.grid-card :deep(.ant-table-tbody > tr:hover .row-actions-desktop),
+.grid-card :deep(.ant-table-tbody .row-actions-desktop:focus-within) {
+    opacity: 1;
+}
+
+.grid-card:has(.bulk-bar--mobile-sticky) {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+}
+
+@media (max-width: 768px) {
+    .page-header { flex-direction: column; align-items: stretch; }
+    .hide-on-mobile { display: none !important; }
+}
+
+.adv-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.adv-filter-btn__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.25);
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+}
+.adv-filter-btn__clear {
+    font-size: 14px;
+    opacity: 0.7;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.adv-filter-btn__clear:hover {
+    opacity: 1;
+    transform: scale(1.12);
+}
+</style>
+
+<style>
+@media (max-width: 767.98px) {
+    .below-shell .content {
+        padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 150px) !important;
+    }
+}
+</style>
